@@ -61,5 +61,11 @@ class MaintenanceSchedule extends Equatable {
   }
 
   @override
-  List<Object?> get props => [id, title, intervalMileage, description, lastCompletedMileage];
+  List<Object?> get props => [
+    id,
+    title,
+    intervalMileage,
+    description,
+    lastCompletedMileage,
+  ];
 }

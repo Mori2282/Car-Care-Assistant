@@ -1,46 +1,99 @@
 import 'package:dio/dio.dart';
 
-class NhtsaApiService {
-  final Dio _dio = Dio(
-    BaseOptions(
-      baseUrl: 'https://vpic.nhtsa.dot.gov/api',
-      connectTimeout: const Duration(seconds: 8),
-      receiveTimeout: const Duration(seconds: 8),
-    ),
-  );
+import '../../../../core/catalog/catalog_api.dart';
 
-  /// Отправляет реальный REST API запрос к государственной базе NHTSA (США)
-  Future<Map<String, dynamic>?> decodeVin(String vin) async {
-    try {
-      final response = await _dio.get('/vehicles/decodevin/$vin?format=json');
-      
-      if (response.statusCode == 200 && response.data != null) {
-        final results = response.data['Results'] as List<dynamic>;
+class VehicleMatch {
+  const VehicleMatch({
+    required this.brand,
+    required this.model,
+    required this.source,
+    this.year,
+    this.variant = '',
+    this.catalogId = '',
+  });
 
-        String getValue(String variableName) {
-          final item = results.firstWhere(
-            (element) => element['Variable'] == variableName,
-            orElse: () => {'Value': null},
+  final String brand;
+  final String model;
+  final int? year;
+  final String variant;
+  final String catalogId;
+  final String source;
+}
+
+class VinLookup {
+  VinLookup(this._catalog, {Dio? dio})
+    : _dio =
+          dio ??
+          Dio(
+            BaseOptions(
+              connectTimeout: const Duration(seconds: 6),
+              receiveTimeout: const Duration(seconds: 8),
+            ),
           );
-          return item['Value']?.toString().trim() ?? '';
-        }
 
-        final make = getValue('Make');
-        final model = getValue('Model');
-        final year = getValue('Model Year');
+  final CatalogApi _catalog;
+  final Dio _dio;
 
-        if (make.isNotEmpty || model.isNotEmpty) {
-          return {
-            'brand': make.isNotEmpty ? make : 'Иномарка',
-            'model': model.isNotEmpty ? model : 'Стандарт',
-            'year': int.tryParse(year) ?? DateTime.now().year,
-          };
-        }
+  Future<List<VehicleMatch>> find(String vin) async {
+    var catalogFailed = false;
+    if (_catalog.isConfigured) {
+      try {
+        final rows = await _catalog.query('vin', {'vin': vin});
+        final matches =
+            rows
+                .map(
+                  (row) => VehicleMatch(
+                    brand: _value(row['brand']),
+                    model: _value(row['model']),
+                    year: _year(row['year']),
+                    variant: _value(row['variant']),
+                    catalogId: _value(row['id']),
+                    source:
+                        _value(row['source']).isEmpty
+                            ? 'Каталог'
+                            : _value(row['source']),
+                  ),
+                )
+                .where(
+                  (match) => match.brand.isNotEmpty || match.model.isNotEmpty,
+                )
+                .toList();
+        if (matches.isNotEmpty) return matches;
+      } catch (_) {
+        catalogFailed = true;
       }
-      return null;
-    } catch (e) {
-      print('Ошибка при обращении к NHTSA REST API: $e');
-      return null;
     }
+    final response = await _dio.get<Map<String, dynamic>>(
+      'https://vpic.nhtsa.dot.gov/api/vehicles/DecodeVinValues/$vin',
+      queryParameters: {'format': 'json'},
+    );
+    final rows = response.data?['Results'];
+    if (rows is! List) throw const FormatException('Invalid VIN response');
+    final row = rows.whereType<Map<String, dynamic>>().firstOrNull;
+    if (row != null) {
+      final brand = _value(row['Make']);
+      final model = _value(row['Model']);
+      if (brand.isNotEmpty || model.isNotEmpty) {
+        return [
+          VehicleMatch(
+            brand: brand,
+            model: model,
+            year: _year(row['ModelYear']),
+            source: 'NHTSA vPIC',
+          ),
+        ];
+      }
+    }
+    if (catalogFailed) throw StateError('Catalog is unavailable');
+    return [];
+  }
+
+  static String _value(Object? value) => value is String ? value.trim() : '';
+
+  static int? _year(Object? value) {
+    final year = int.tryParse(value.toString());
+    return year != null && year >= 1886 && year <= DateTime.now().year + 1
+        ? year
+        : null;
   }
 }

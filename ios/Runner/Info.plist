@@ -4,6 +4,8 @@
 <dict>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
+	<key>NSCameraUsageDescription</key>
+	<string>Камера нужна для сканирования штрихкода VIN.</string>
 	<key>CFBundleDisplayName</key>
 	<string>Car Care App</string>
 	<key>CFBundleExecutable</key>

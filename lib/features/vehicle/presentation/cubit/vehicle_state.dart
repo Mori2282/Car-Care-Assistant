@@ -18,10 +18,7 @@ class VehicleLoaded extends VehicleState {
 
   const VehicleLoaded({required this.vehicles, this.selectedVehicle});
 
-  VehicleLoaded copyWith({
-    List<Vehicle>? vehicles,
-    Vehicle? selectedVehicle,
-  }) {
+  VehicleLoaded copyWith({List<Vehicle>? vehicles, Vehicle? selectedVehicle}) {
     return VehicleLoaded(
       vehicles: vehicles ?? this.vehicles,
       selectedVehicle: selectedVehicle ?? this.selectedVehicle,

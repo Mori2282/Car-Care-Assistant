@@ -70,5 +70,14 @@ class MaintenanceRecord extends Equatable {
   }
 
   @override
-  List<Object?> get props => [id, vehicleId, title, mileage, date, cost, notes, type];
+  List<Object?> get props => [
+    id,
+    vehicleId,
+    title,
+    mileage,
+    date,
+    cost,
+    notes,
+    type,
+  ];
 }

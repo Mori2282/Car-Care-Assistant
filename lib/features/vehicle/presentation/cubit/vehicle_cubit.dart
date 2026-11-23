@@ -1,66 +1,52 @@
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:uuid/uuid.dart';
 import '../../domain/models/vehicle.dart';
 import '../../domain/repositories/vehicle_repository.dart';
 import 'vehicle_state.dart';
 
 class VehicleCubit extends Cubit<VehicleState> {
-  final VehicleRepository _vehicleRepository;
+  VehicleCubit(this._repository) : super(VehicleInitial());
 
-  VehicleCubit(this._vehicleRepository) : super(VehicleInitial());
+  final VehicleRepository _repository;
 
   Future<void> loadVehicles() async {
-    emit(VehicleLoading());
+    final previous = state;
+    if (previous is! VehicleLoaded) emit(VehicleLoading());
     try {
-      final vehicles = await _vehicleRepository.getVehicles();
-      if (vehicles.isEmpty) {
-        emit(const VehicleLoaded(vehicles: [], selectedVehicle: null));
-      } else {
-        emit(VehicleLoaded(vehicles: vehicles, selectedVehicle: vehicles.first));
+      final vehicles = await _repository.getVehicles();
+      final selectedId =
+          previous is VehicleLoaded
+              ? previous.selectedVehicle?.id
+              : await _repository.selectedId();
+      final selected =
+          vehicles.where((v) => v.id == selectedId).firstOrNull ??
+          vehicles.firstOrNull;
+      if (!isClosed) {
+        emit(VehicleLoaded(vehicles: vehicles, selectedVehicle: selected));
       }
-    } catch (e) {
-      emit(VehicleError('Не удалось загрузить список автомобилей: ${e.toString()}'));
+    } catch (_) {
+      if (!isClosed) emit(const VehicleError('Не удалось загрузить гараж'));
     }
   }
 
-  void selectVehicle(Vehicle vehicle) {
-    if (state is VehicleLoaded) {
-      final loadedState = state as VehicleLoaded;
-      emit(loadedState.copyWith(selectedVehicle: vehicle));
-    }
-  }
-
-  Future<void> addVehicle({
-    required String brand,
-    required String model,
-    required int mileage,
-    required String vin,
-    required int year,
-  }) async {
+  Future<void> selectVehicle(Vehicle vehicle) async {
+    final previous = state;
+    if (previous is! VehicleLoaded) return;
+    emit(previous.copyWith(selectedVehicle: vehicle));
     try {
-      final currentLoaded = state as VehicleLoaded?;
-      final previousVehicles = currentLoaded?.vehicles ?? [];
-      final previousSelected = currentLoaded?.selectedVehicle;
-
-      emit(VehicleLoading());
-
-      final newVehicle = Vehicle(
-        id: '', // Будет сгенерировано в репозитории
-        brand: brand,
-        model: model,
-        mileage: mileage,
-        vin: vin,
-        year: year,
-      );
-
-      await _vehicleRepository.addVehicle(newVehicle);
-      
-      // Перезагружаем список
-      final vehicles = await _vehicleRepository.getVehicles();
-      // Выбираем свежесозданный автомобиль (он последний в списке)
-      final addedVehicle = vehicles.lastWhere((v) => v.vin == vin, orElse: () => vehicles.last);
-      emit(VehicleLoaded(vehicles: vehicles, selectedVehicle: addedVehicle));
-    } catch (e) {
-      emit(VehicleError('Не удалось добавить автомобиль: ${e.toString()}'));
+      await _repository.select(vehicle.id);
+    } catch (_) {
+      // The current selection remains usable even if preferences cannot be saved.
     }
+  }
+
+  Future<void> saveVehicle(Vehicle vehicle) async {
+    final item =
+        vehicle.id.isEmpty ? vehicle.copyWith(id: const Uuid().v4()) : vehicle;
+    await _repository.saveVehicle(item);
+    final vehicles = await _repository.getVehicles();
+    if (isClosed) return;
+    emit(VehicleLoaded(vehicles: vehicles, selectedVehicle: item));
+    await selectVehicle(item);
   }
 }

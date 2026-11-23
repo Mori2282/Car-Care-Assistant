@@ -4,42 +4,23 @@ import '../../domain/repositories/expenses_repository.dart';
 import 'expenses_state.dart';
 
 class ExpensesCubit extends Cubit<ExpensesState> {
-  final ExpensesRepository _expensesRepository;
+  ExpensesCubit(this._repository, this.vehicleId) : super(ExpensesInitial());
 
-  ExpensesCubit(this._expensesRepository) : super(ExpensesInitial());
+  final ExpensesRepository _repository;
+  final String vehicleId;
 
-  Future<void> loadExpenses(String vehicleId) async {
-    emit(ExpensesLoading());
+  Future<void> load() async {
+    if (state is! ExpensesLoaded) emit(ExpensesLoading());
     try {
-      final expenses = await _expensesRepository.getExpenses(vehicleId);
-      emit(ExpensesLoaded(expenses: expenses));
-    } catch (e) {
-      emit(ExpensesError('Не удалось загрузить расходы: ${e.toString()}'));
+      final expenses = await _repository.getExpenses(vehicleId);
+      if (!isClosed) emit(ExpensesLoaded(expenses: expenses));
+    } catch (_) {
+      if (!isClosed) emit(const ExpensesError('Не удалось загрузить расходы'));
     }
   }
 
-  Future<void> addExpense({
-    required DateTime date,
-    required double amount,
-    required String category,
-    required String vehicleId,
-  }) async {
-    if (state is ExpensesLoaded) {
-      try {
-        final newExpense = ExpensePoint(
-          id: '',
-          date: date,
-          amount: amount,
-          category: category,
-          vehicleId: vehicleId, // <-- Передаем жесткую привязку к машине!
-        );
-        await _expensesRepository.addExpense(newExpense);
-        
-        final expenses = await _expensesRepository.getExpenses(vehicleId);
-        emit(ExpensesLoaded(expenses: expenses));
-      } catch (e) {
-        emit(ExpensesError('Не удалось добавить расход: ${e.toString()}'));
-      }
-    }
+  Future<void> addExpense(ExpensePoint expense) async {
+    await _repository.addExpense(expense);
+    if (!isClosed) await load();
   }
 }

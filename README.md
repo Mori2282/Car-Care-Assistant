@@ -1,16 +1,44 @@
-# car_care_app
+# Car Care Assistant
 
-A new Flutter project.
+Личный гараж для Android 6.0 и новее. Приложение хранит автомобили, план и историю обслуживания, расходы и запчасти. Записи доступны без интернета и хранятся на устройстве.
 
-## Getting Started
+[Скачать Android APK](https://github.com/Mori2282/Car-Care-Assistant/releases/latest)
 
-This project is a starting point for a Flutter application.
+- **Гараж.** Добавление и редактирование авто вручную, по VIN или по номеру кузова. Камера распознаёт штрихкоды и QR-коды, содержащие VIN. VIN, напечатанный обычным текстом, можно ввести вручную.
+- **ТО.** Для каждой машины можно задать свои интервалы по пробегу. Запись о выполнении работы обновляет план. Интервалы следует брать из инструкции к автомобилю.
+- **Запчасти.** Поиск по названию или оригинальному артикулу (OE). Детали сохраняются отдельно для каждого автомобиля. В стандартной сборке поиск открывается в браузере, а найденный артикул можно сохранить вручную. Проверка совместимости внутри приложения доступна при подключении каталога.
+- **Расходы.** Ручные записи и стоимость выполненных работ, сводка за шесть месяцев. Валюта первой версии — российский рубль.
 
-A few resources to get you started if this is your first Flutter project:
+## Сборка и тесты
 
-- [Lab: Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Cookbook: Useful Flutter samples](https://docs.flutter.dev/cookbook)
+Используйте Flutter 3.29.0, JDK 17 и Android SDK 36 с Build Tools 35.0.0.
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+```sh
+flutter pub get
+flutter analyze
+flutter test
+flutter build apk --release
+```
+
+APK появится в `build/app/outputs/flutter-apk/app-release.apk`. Для домашней установки сборка по умолчанию подписывается отладочным сертификатом. Для регулярной публикации задайте переменные `CAR_CARE_KEYSTORE` (абсолютный путь к хранилищу), `CAR_CARE_STORE_PASSWORD`, `CAR_CARE_KEY_ALIAS` и `CAR_CARE_KEY_PASSWORD`. Чтобы Android смог установить обновление поверх существующей версии, используйте тот же ключ подписи для всех обновлений одной серии. Храните ключ вне репозитория.
+
+Проект iOS требует iOS 15.5 или новее из-за библиотеки сканера. Проверки и APK относятся к Android.
+
+## Подключение каталога VIN и аналогов
+
+В стандартной сборке VIN проверяется через [NHTSA vPIC](https://vpic.nhtsa.dot.gov/api/home/index/faq). Его покрытие ориентировано на рынок США. Если сеть недоступна или данных о машине нет, карточку можно сохранить вручную. Автозаполнение для других рынков зависит от покрытия подключённого поставщика.
+
+Для каталога, например TecDoc, нужен лицензированный серверный доступ. Ключ поставщика хранится на сервере. Передайте приложению HTTPS-адрес вашего шлюза:
+
+```sh
+flutter build apk --release --dart-define=CATALOG_API_URL=https://catalog.example.com/api
+```
+
+Шлюз принимает JSON через POST. Возвращайте HTTP 200 и пустой массив `results`, если совпадений нет:
+
+| Маршрут | JSON запроса | Поля объекта в `results` |
+| --- | --- | --- |
+| `/vin` | `vin` | `id` (ID модификации), `brand`, `model`, `year` (целое), `variant`, `source` |
+| `/parts` | `query`, `vehicleId`, `brand`, `model`, `year` (строка), `variant` | `name`, `brand`, `number`, `oe`, `source`, `vehicleId`, `fitmentConfirmed` (логическое) |
+
+Шлюз должен возвращать статус совместимости только после проверки связи детали с точной модификацией. Приложение сверяет полученный `vehicleId` с локально подтверждённой модификацией. Запрос запчастей передаёт характеристики авто, запрос VIN передаёт VIN в теле запроса. Примените ограничения запросов и исключите VIN из обычных журналов шлюза. Код этого репозитория содержит клиент шлюза, а доступ к данным и сам шлюз подключаются отдельно.

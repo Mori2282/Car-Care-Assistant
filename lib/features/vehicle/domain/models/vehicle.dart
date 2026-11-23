@@ -7,6 +7,8 @@ class Vehicle extends Equatable {
   final int mileage;
   final String vin;
   final int year;
+  final String variant;
+  final String catalogId;
 
   const Vehicle({
     required this.id,
@@ -15,6 +17,8 @@ class Vehicle extends Equatable {
     required this.mileage,
     required this.vin,
     required this.year,
+    this.variant = '',
+    this.catalogId = '',
   });
 
   Vehicle copyWith({
@@ -24,6 +28,8 @@ class Vehicle extends Equatable {
     int? mileage,
     String? vin,
     int? year,
+    String? variant,
+    String? catalogId,
   }) {
     return Vehicle(
       id: id ?? this.id,
@@ -32,6 +38,8 @@ class Vehicle extends Equatable {
       mileage: mileage ?? this.mileage,
       vin: vin ?? this.vin,
       year: year ?? this.year,
+      variant: variant ?? this.variant,
+      catalogId: catalogId ?? this.catalogId,
     );
   }
 
@@ -43,6 +51,8 @@ class Vehicle extends Equatable {
       'mileage': mileage,
       'vin': vin,
       'year': year,
+      'variant': variant,
+      'catalogId': catalogId,
     };
   }
 
@@ -54,9 +64,20 @@ class Vehicle extends Equatable {
       mileage: json['mileage'] as int,
       vin: json['vin'] as String,
       year: json['year'] as int,
+      variant: json['variant'] as String? ?? '',
+      catalogId: json['catalogId'] as String? ?? '',
     );
   }
 
   @override
-  List<Object?> get props => [id, brand, model, mileage, vin, year];
+  List<Object?> get props => [
+    id,
+    brand,
+    model,
+    mileage,
+    vin,
+    year,
+    variant,
+    catalogId,
+  ];
 }

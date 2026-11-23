@@ -1,109 +1,64 @@
 import 'package:flutter/material.dart';
+import 'package:mobile_scanner/mobile_scanner.dart';
 
-class VinScannerWidget extends StatefulWidget {
-  final Function(String vin) onVinScanned;
+import '../../domain/models/vin.dart';
 
-  const VinScannerWidget({super.key, required this.onVinScanned});
+class VinScannerPage extends StatefulWidget {
+  const VinScannerPage({super.key});
 
   @override
-  State<VinScannerWidget> createState() => _VinScannerWidgetState();
+  State<VinScannerPage> createState() => _VinScannerPageState();
 }
 
-class _VinScannerWidgetState extends State<VinScannerWidget> with SingleTickerProviderStateMixin {
-  late AnimationController _animationController;
-  bool _isScanning = false;
+class _VinScannerPageState extends State<VinScannerPage> {
+  bool _completed = false;
 
-  @override
-  void initState() {
-    super.initState();
-    _animationController = AnimationController(
-      vsync: this,
-      duration: const Duration(seconds: 2),
-    )..repeat(reverse: true);
-  }
-
-  @override
-  void dispose() {
-    _animationController.dispose();
-    super.dispose();
-  }
-
-  void _simulateScan() async {
-    setState(() => _isScanning = true);
-    await Future.delayed(const Duration(seconds: 2));
-    if (mounted) {
-      setState(() => _isScanning = false);
-      const mockVins = [
-        'WBA31AY050FP12345',
-        '5YJ3E1EB8LF654321',
-        'WAUZZZ8K9DA012345',
-        'JHMFA1F82BS098765'
-      ];
-      final scannedVin = (List.from(mockVins)..shuffle()).first;
-      widget.onVinScanned(scannedVin);
+  void _detect(BarcodeCapture capture) {
+    if (_completed || !mounted) return;
+    for (final barcode in capture.barcodes) {
+      final value = normalizeVin(barcode.rawValue ?? '');
+      final vin =
+          value.startsWith('I') && value.length == 18
+              ? value.substring(1)
+              : value;
+      if (isVin(vin)) {
+        _completed = true;
+        Navigator.of(context).pop(vin);
+        return;
+      }
     }
   }
 
   @override
-  Widget build(BuildContext context) {
-    return Container(
-      height: 180,
-      decoration: BoxDecoration(
-        color: Colors.black54,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Theme.of(context).colorScheme.primary, width: 2),
-      ),
-      child: Stack(
+  Widget build(BuildContext context) => Scaffold(
+    appBar: AppBar(title: const Text('Сканировать VIN')),
+    body: SafeArea(
+      child: Column(
         children: [
-          Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                const Icon(Icons.camera_alt, size: 40, color: Colors.grey),
-                const SizedBox(height: 8),
-                Text(
-                  _isScanning ? 'Идет сканирование VIN-кода...' : 'Наведите камеру на VIN-код или ПТС',
-                  style: const TextStyle(color: Colors.grey, fontSize: 13),
-                ),
-                const SizedBox(height: 12),
-                ElevatedButton.icon(
-                  onPressed: _isScanning ? null : _simulateScan,
-                  icon: const Icon(Icons.qr_code_scanner),
-                  label: Text(_isScanning ? 'Сканирование...' : 'Захватить VIN (Mock)'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Theme.of(context).colorScheme.primary,
-                    foregroundColor: Colors.white,
-                  ),
-                )
-              ],
-            ),
-          ),
-          if (_isScanning)
-            AnimatedBuilder(
-              animation: _animationController,
-              builder: (context, child) {
-                return Positioned(
-                  top: 10 + (_animationController.value * 150),
-                  left: 20,
-                  right: 20,
-                  child: Container(
-                    height: 2,
-                    decoration: BoxDecoration(
-                      color: Colors.redAccent,
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.redAccent.withOpacity(0.8),
-                          blurRadius: 6,
-                          spreadRadius: 2,
-                        )
-                      ],
+          Expanded(
+            child: MobileScanner(
+              onDetect: _detect,
+              errorBuilder:
+                  (context, error, child) => const Center(
+                    child: Padding(
+                      padding: EdgeInsets.all(24),
+                      child: Text(
+                        'Камера недоступна. Проверьте разрешение или введите VIN вручную.',
+                      ),
                     ),
                   ),
-                );
-              },
             ),
+          ),
+          const Padding(
+            padding: EdgeInsets.all(16),
+            child: Text('Наведите камеру на штрихкод или QR-код с VIN.'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Ввести вручную'),
+          ),
         ],
       ),
-    );
-  }
+    ),
+  );
 }
