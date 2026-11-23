@@ -8,6 +8,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../../../core/notifications/maintenance_reminders.dart';
 import '../../../../core/storage/garage_backup.dart';
 import '../../../../core/storage/garage_storage.dart';
+import '../../../../core/theme/theme_cubit.dart';
 import '../../../../core/widgets/content_list.dart';
 
 class GarageSettingsPage extends StatefulWidget {
@@ -19,9 +20,27 @@ class GarageSettingsPage extends StatefulWidget {
 
 class _GarageSettingsPageState extends State<GarageSettingsPage> {
   bool _busy = false;
+  bool _savingTheme = false;
   String? _message;
   late final _reminders = context.read<MaintenanceReminders>();
   late final _storage = context.read<GarageStorage>();
+
+  Future<void> _selectTheme(ThemeMode mode) async {
+    if (_savingTheme) return;
+    final cubit = context.read<ThemeCubit>();
+    setState(() => _savingTheme = true);
+    try {
+      await cubit.select(mode);
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Не удалось сохранить тему.')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _savingTheme = false);
+    }
+  }
 
   Future<void> _run(Future<String?> Function() operation) async {
     if (_busy) return;
@@ -110,6 +129,30 @@ class _GarageSettingsPageState extends State<GarageSettingsPage> {
     appBar: AppBar(title: const Text('Настройки гаража')),
     body: ContentList(
       children: [
+        Text('Тема оформления', style: Theme.of(context).textTheme.titleLarge),
+        const SizedBox(height: 8),
+        BlocBuilder<ThemeCubit, ThemeMode>(
+          builder:
+              (context, mode) => Card(
+                child: Column(
+                  children: [
+                    for (final (option, label) in const [
+                      (ThemeMode.system, 'Как на телефоне'),
+                      (ThemeMode.light, 'Светлая'),
+                      (ThemeMode.dark, 'Тёмная'),
+                    ])
+                      RadioListTile<ThemeMode>(
+                        value: option,
+                        groupValue: mode,
+                        title: Text(label),
+                        onChanged:
+                            _savingTheme ? null : (_) => _selectTheme(option),
+                      ),
+                  ],
+                ),
+              ),
+        ),
+        const SizedBox(height: 16),
         Text('Резервная копия', style: Theme.of(context).textTheme.titleLarge),
         const SizedBox(height: 8),
         const Text(

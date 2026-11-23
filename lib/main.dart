@@ -5,6 +5,7 @@ import 'package:intl/date_symbol_data_local.dart';
 
 import 'core/catalog/catalog_api.dart';
 import 'core/theme/app_theme.dart';
+import 'core/theme/theme_cubit.dart';
 import 'core/storage/garage_storage.dart';
 import 'core/notifications/maintenance_reminders.dart';
 import 'features/vehicle/domain/repositories/vehicle_repository.dart';
@@ -30,6 +31,8 @@ class CarCareApp extends StatelessWidget {
     this.storage = const PreferencesGarageStorage(),
   });
   final GarageStorage storage;
+  static final _lightTheme = AppTheme.create(Brightness.light);
+  static final _darkTheme = AppTheme.create(Brightness.dark);
 
   @override
   Widget build(BuildContext context) => MultiRepositoryProvider(
@@ -65,19 +68,29 @@ class CarCareApp extends StatelessWidget {
             )..refreshQuietly(),
       ),
     ],
-    child: BlocProvider(
-      create:
-          (context) =>
-              VehicleCubit(context.read<VehicleRepository>())..loadVehicles(),
-      child: MaterialApp(
-        title: 'Car Care Assistant',
-        debugShowCheckedModeBanner: false,
-        locale: const Locale('ru'),
-        supportedLocales: const [Locale('ru')],
-        localizationsDelegates: GlobalMaterialLocalizations.delegates,
-        theme: AppTheme.create(Brightness.light),
-        darkTheme: AppTheme.create(Brightness.dark),
-        home: const DashboardPage(),
+    child: MultiBlocProvider(
+      providers: [
+        BlocProvider(create: (_) => ThemeCubit()),
+        BlocProvider(
+          create:
+              (context) =>
+                  VehicleCubit(context.read<VehicleRepository>())
+                    ..loadVehicles(),
+        ),
+      ],
+      child: BlocBuilder<ThemeCubit, ThemeMode>(
+        builder:
+            (context, mode) => MaterialApp(
+              title: 'Car Care Assistant',
+              debugShowCheckedModeBanner: false,
+              locale: const Locale('ru'),
+              supportedLocales: const [Locale('ru')],
+              localizationsDelegates: GlobalMaterialLocalizations.delegates,
+              theme: _lightTheme,
+              darkTheme: _darkTheme,
+              themeMode: mode,
+              home: const DashboardPage(),
+            ),
       ),
     ),
   );
