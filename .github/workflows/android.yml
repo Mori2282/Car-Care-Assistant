@@ -31,6 +31,7 @@ jobs:
       - run: dart format --output=none --set-exit-if-changed lib test
       - run: flutter analyze --no-pub
       - run: flutter test --no-pub
+      - run: python3 -B -m unittest discover -s tools -p 'test_tecalliance_vis.py'
       - name: Build Android APK
         env:
           CATALOG_API_URL: ${{ vars.CATALOG_API_URL }}

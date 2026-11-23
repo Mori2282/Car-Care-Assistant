@@ -21,7 +21,7 @@ class _VinScannerPageState extends State<VinScannerPage> {
           value.startsWith('I') && value.length == 18
               ? value.substring(1)
               : value;
-      if (isVin(vin)) {
+      if (isVin(vin) || isFrame(value)) {
         _completed = true;
         Navigator.of(context).pop(vin);
         return;
@@ -31,7 +31,7 @@ class _VinScannerPageState extends State<VinScannerPage> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: const Text('Сканировать VIN')),
+    appBar: AppBar(title: const Text('Сканировать код')),
     body: SafeArea(
       child: Column(
         children: [
@@ -43,7 +43,7 @@ class _VinScannerPageState extends State<VinScannerPage> {
                     child: Padding(
                       padding: EdgeInsets.all(24),
                       child: Text(
-                        'Камера недоступна. Проверьте разрешение или введите VIN вручную.',
+                        'Камера недоступна. Проверьте разрешение или введите код вручную.',
                       ),
                     ),
                   ),
@@ -51,7 +51,9 @@ class _VinScannerPageState extends State<VinScannerPage> {
           ),
           const Padding(
             padding: EdgeInsets.all(16),
-            child: Text('Наведите камеру на штрихкод или QR-код с VIN.'),
+            child: Text(
+              'Наведите камеру на штрихкод или QR-код с VIN или номером кузова.',
+            ),
           ),
           TextButton(
             onPressed: () => Navigator.of(context).pop(),

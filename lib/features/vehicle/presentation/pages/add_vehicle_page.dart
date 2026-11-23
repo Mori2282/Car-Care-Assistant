@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter/services.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../../../core/widgets/content_list.dart';
 import '../../data/datasources/nhtsa_api_service.dart';
@@ -37,6 +38,7 @@ class _AddVehiclePageState extends State<AddVehiclePage> {
   String? _message;
   String? _saveError;
   VehicleMatch? _match;
+  bool _frameHelp = false;
 
   @override
   void dispose() {
@@ -62,34 +64,45 @@ class _AddVehiclePageState extends State<AddVehiclePage> {
     setState(() {
       _match = null;
       _message = null;
+      _frameHelp = false;
     });
   }
 
   Future<void> _lookup() async {
     final vin = normalizeVin(_vin.text);
-    if (!isVin(vin)) {
+    final frame = isFrame(vin);
+    if (!isVin(vin) && !frame) {
       setState(
-        () => _message = 'Для поиска введите 17 символов VIN без I, O и Q.',
+        () =>
+            _message =
+                'Введите 17 символов VIN или номер кузова, например ZVW30-1234567.',
       );
       return;
     }
     FocusScope.of(context).unfocus();
     setState(() {
       _lookingUp = true;
+      _frameHelp = false;
       _message = null;
     });
     try {
-      final matches = await context.read<VinLookup>().find(
+      final lookup = context.read<VinLookup>();
+      final matches = await lookup.find(
         vin,
         market: _market,
         modelYear: int.tryParse(_year.text),
       );
       if (!mounted || normalizeVin(_vin.text) != vin) return;
       if (matches.isEmpty) {
-        setState(
-          () =>
-              _message = 'VIN не найден. Заполните данные автомобиля вручную.',
-        );
+        setState(() {
+          _frameHelp = frame;
+          _message =
+              frame
+                  ? (lookup.hasCatalog
+                      ? 'Номер кузова не найден. Проверьте его в справочнике или добавьте авто вручную.'
+                      : 'Каталог номеров кузова не подключён. Откройте справочник или добавьте авто вручную.')
+                  : 'VIN не найден. Сверьте код и заполните данные вручную.';
+        });
         return;
       }
       final selected = await showModalBottomSheet<VehicleMatch>(
@@ -110,9 +123,18 @@ class _AddVehiclePageState extends State<AddVehiclePage> {
                   for (final item in matches)
                     Card(
                       child: ListTile(
-                        title: Text('${item.brand} ${item.model}'.trim()),
+                        title: Text(
+                          item.brand.isEmpty && item.model.isEmpty
+                              ? 'Данные производителя'
+                              : '${item.brand} ${item.model}'.trim(),
+                        ),
                         subtitle: Text(
-                          [item.year?.toString(), item.variant, item.source]
+                          [
+                                item.year?.toString(),
+                                item.variant,
+                                item.source,
+                                item.note,
+                              ]
                               .whereType<String>()
                               .where((text) => text.isNotEmpty)
                               .join(' · '),
@@ -126,20 +148,23 @@ class _AddVehiclePageState extends State<AddVehiclePage> {
             ),
       );
       if (!mounted || selected == null) return;
-      _brand.text = selected.brand;
-      _model.text = selected.model;
-      _year.text = selected.year?.toString() ?? '';
-      _variant.text = selected.variant;
+      if (selected.brand.isNotEmpty) _brand.text = selected.brand;
+      if (selected.model.isNotEmpty) _model.text = selected.model;
+      if (selected.year != null) _year.text = selected.year.toString();
+      if (selected.variant.isNotEmpty) _variant.text = selected.variant;
       setState(() {
         _match = selected;
         _message =
-            'Источник: ${selected.source}. Проверьте и дополните данные.';
+            selected.note.isEmpty
+                ? 'Проверьте и дополните данные.'
+                : selected.note;
       });
     } catch (_) {
       if (mounted) {
-        setState(
-          () => _message = 'Поиск недоступен. Можно заполнить данные вручную.',
-        );
+        setState(() {
+          _frameHelp = frame;
+          _message = 'Поиск недоступен. Можно заполнить данные вручную.';
+        });
       }
     } finally {
       if (mounted) setState(() => _lookingUp = false);
@@ -149,9 +174,10 @@ class _AddVehiclePageState extends State<AddVehiclePage> {
   bool get _matchesCatalog {
     final match = _match;
     return match != null &&
+        match.catalogId.isNotEmpty &&
         match.brand == _brand.text.trim() &&
         match.model == _model.text.trim() &&
-        match.year == int.tryParse(_year.text) &&
+        (match.year == null || match.year == int.tryParse(_year.text)) &&
         match.variant == _variant.text.trim();
   }
 
@@ -199,7 +225,9 @@ class _AddVehiclePageState extends State<AddVehiclePage> {
     } on DuplicateVin {
       if (mounted) {
         setState(
-          () => _saveError = 'Автомобиль с таким VIN уже есть в гараже.',
+          () =>
+              _saveError =
+                  'Автомобиль с таким VIN или номером кузова уже есть в гараже.',
         );
       }
     } catch (_) {
@@ -251,7 +279,7 @@ class _AddVehiclePageState extends State<AddVehiclePage> {
             Text('VIN или номер кузова', style: theme.textTheme.titleLarge),
             const SizedBox(height: 8),
             const Text(
-              'Введите VIN для поиска. Если его нет, укажите номер кузова или заполните только данные авто.',
+              'Введите VIN или номер кузова (FRAME). Автомобиль можно добавить и вручную.',
             ),
             const SizedBox(height: 12),
             TextFormField(
@@ -268,6 +296,7 @@ class _AddVehiclePageState extends State<AddVehiclePage> {
                   setState(() {
                     _message = null;
                     _match = null;
+                    _frameHelp = false;
                   });
                 }
               },
@@ -280,7 +309,7 @@ class _AddVehiclePageState extends State<AddVehiclePage> {
                 FilledButton.tonalIcon(
                   onPressed: _lookingUp || _saving ? null : _lookup,
                   icon: const Icon(Icons.search),
-                  label: const Text('Найти по VIN'),
+                  label: const Text('Найти автомобиль'),
                 ),
                 OutlinedButton.icon(
                   onPressed: _lookingUp || _saving ? null : _scan,
@@ -292,7 +321,7 @@ class _AddVehiclePageState extends State<AddVehiclePage> {
             const SizedBox(height: 12),
             DropdownButtonFormField<String>(
               value:
-                  const ['', 'EU', 'US', 'CN', 'OTHER'].contains(_market)
+                  const ['', 'EU', 'US', 'CN', 'JP', 'OTHER'].contains(_market)
                       ? _market
                       : '',
               isExpanded: true,
@@ -304,6 +333,7 @@ class _AddVehiclePageState extends State<AddVehiclePage> {
                 DropdownMenuItem(value: 'EU', child: Text('Европа')),
                 DropdownMenuItem(value: 'US', child: Text('Северная Америка')),
                 DropdownMenuItem(value: 'CN', child: Text('Китай')),
+                DropdownMenuItem(value: 'JP', child: Text('Япония')),
                 DropdownMenuItem(value: 'OTHER', child: Text('Другой')),
               ],
               onChanged:
@@ -312,6 +342,7 @@ class _AddVehiclePageState extends State<AddVehiclePage> {
                       : (value) => setState(() {
                         _market = value ?? '';
                         _match = null;
+                        _frameHelp = false;
                         _message = null;
                       }),
             ),
@@ -324,6 +355,33 @@ class _AddVehiclePageState extends State<AddVehiclePage> {
               Padding(
                 padding: const EdgeInsets.only(top: 12),
                 child: Semantics(liveRegion: true, child: Text(_message!)),
+              ),
+            if (_frameHelp)
+              OutlinedButton.icon(
+                onPressed: () async {
+                  final frame = normalizeVin(_vin.text);
+                  await Clipboard.setData(ClipboardData(text: frame));
+                  var opened = false;
+                  try {
+                    opened = await launchUrl(
+                      Uri.https('partsouq.com', '/en/catalogs/'),
+                      mode: LaunchMode.externalApplication,
+                    );
+                  } catch (_) {
+                    // The number remains on the clipboard when no browser is installed.
+                  }
+                  if (!opened && context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text(
+                          'Номер кузова скопирован. Браузер не открылся.',
+                        ),
+                      ),
+                    );
+                  }
+                },
+                icon: const Icon(Icons.open_in_new),
+                label: const Text('Скопировать номер и открыть справочник'),
               ),
             const SizedBox(height: 24),
             Text('Данные автомобиля', style: theme.textTheme.titleLarge),
