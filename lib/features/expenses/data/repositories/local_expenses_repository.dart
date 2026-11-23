@@ -1,6 +1,6 @@
 import 'dart:convert';
 
-import 'package:shared_preferences/shared_preferences.dart';
+import '../../../../core/storage/garage_storage.dart';
 import '../../../../core/storage/serial_writes.dart';
 import 'package:uuid/uuid.dart';
 import '../../../maintenance/domain/repositories/maintenance_repository.dart';
@@ -9,14 +9,17 @@ import '../../domain/repositories/expenses_repository.dart';
 
 class LocalExpensesRepository implements ExpensesRepository {
   final _writes = SerialWrites();
-  LocalExpensesRepository(this._maintenance);
+  LocalExpensesRepository(
+    this._maintenance, {
+    GarageStorage storage = const PreferencesGarageStorage(),
+  }) : _storage = storage;
+  final GarageStorage _storage;
   final MaintenanceRepository _maintenance;
 
   String _key(String id) => 'custom_expenses_v1_$id';
 
   Future<List<ExpensePoint>> _loadCustom(String id) async {
-    final prefs = await SharedPreferences.getInstance();
-    final raw = prefs.getString(_key(id));
+    final raw = await _storage.read(_key(id));
     if (raw == null) return [];
     return (jsonDecode(raw) as List)
         .cast<Map<String, dynamic>>()
@@ -36,6 +39,7 @@ class LocalExpensesRepository implements ExpensesRepository {
             id: 'maint_${record.id}',
             date: record.date,
             amount: record.cost,
+            currency: record.currency,
             category: record.title,
             vehicleId: vehicleId,
           ),
@@ -44,11 +48,8 @@ class LocalExpensesRepository implements ExpensesRepository {
 
   @override
   Future<void> addExpense(ExpensePoint expense) => _writes.run(() async {
-    final prefs = await SharedPreferences.getInstance();
     final items = await _loadCustom(expense.vehicleId);
     items.add(expense.copyWith(id: const Uuid().v4()));
-    if (!await prefs.setString(_key(expense.vehicleId), jsonEncode(items))) {
-      throw StateError('Expense storage write failed');
-    }
+    await _storage.write(_key(expense.vehicleId), jsonEncode(items));
   });
 }

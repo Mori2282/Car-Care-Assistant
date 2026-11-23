@@ -9,6 +9,7 @@ class Vehicle extends Equatable {
   final int year;
   final String variant;
   final String catalogId;
+  final String market;
 
   const Vehicle({
     required this.id,
@@ -19,6 +20,7 @@ class Vehicle extends Equatable {
     required this.year,
     this.variant = '',
     this.catalogId = '',
+    this.market = '',
   });
 
   Vehicle copyWith({
@@ -30,6 +32,7 @@ class Vehicle extends Equatable {
     int? year,
     String? variant,
     String? catalogId,
+    String? market,
   }) {
     return Vehicle(
       id: id ?? this.id,
@@ -40,6 +43,7 @@ class Vehicle extends Equatable {
       year: year ?? this.year,
       variant: variant ?? this.variant,
       catalogId: catalogId ?? this.catalogId,
+      market: market ?? this.market,
     );
   }
 
@@ -53,6 +57,7 @@ class Vehicle extends Equatable {
       'year': year,
       'variant': variant,
       'catalogId': catalogId,
+      'market': market,
     };
   }
 
@@ -66,6 +71,7 @@ class Vehicle extends Equatable {
       year: json['year'] as int,
       variant: json['variant'] as String? ?? '',
       catalogId: json['catalogId'] as String? ?? '',
+      market: json['market'] as String? ?? '',
     );
   }
 
@@ -79,5 +85,6 @@ class Vehicle extends Equatable {
     year,
     variant,
     catalogId,
+    market,
   ];
 }

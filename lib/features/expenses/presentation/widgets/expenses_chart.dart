@@ -2,13 +2,19 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../../domain/models/expense_point.dart';
+import '../../../../core/widgets/currency_field.dart';
 
-Map<DateTime, double> totalsByMonth(List<ExpensePoint> expenses, DateTime now) {
+Map<DateTime, double> totalsByMonth(
+  List<ExpensePoint> expenses,
+  DateTime now, {
+  String currency = 'RUB',
+}) {
   final totals = {
     for (var offset = 0; offset < 6; offset++)
       DateTime(now.year, now.month - offset): 0.0,
   };
   for (final expense in expenses) {
+    if (expense.currency != currency) continue;
     final month = DateTime(expense.date.year, expense.date.month);
     final value = totals[month];
     if (value != null) totals[month] = value + expense.amount;
@@ -17,16 +23,21 @@ Map<DateTime, double> totalsByMonth(List<ExpensePoint> expenses, DateTime now) {
 }
 
 class ExpensesChart extends StatelessWidget {
-  const ExpensesChart({super.key, required this.expenses});
+  const ExpensesChart({
+    super.key,
+    required this.expenses,
+    required this.currency,
+  });
   final List<ExpensePoint> expenses;
+  final String currency;
 
   @override
   Widget build(BuildContext context) {
-    final monthly = totalsByMonth(expenses, DateTime.now());
+    final monthly = totalsByMonth(expenses, DateTime.now(), currency: currency);
     final max = monthly.values.fold(0.0, (a, b) => a > b ? a : b);
     final sum = monthly.values.fold(0.0, (a, b) => a + b);
     final theme = Theme.of(context);
-    final money = NumberFormat.currency(locale: 'ru', symbol: '₽');
+    String money(double amount) => garageMoney(amount, currency);
     final monthLabel = DateFormat('LLLL yyyy', 'ru');
     return Card(
       child: Padding(
@@ -35,7 +46,7 @@ class ExpensesChart extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Text('За последние 6 месяцев', style: theme.textTheme.titleMedium),
-            Text(money.format(sum), style: theme.textTheme.headlineSmall),
+            Text(money(sum), style: theme.textTheme.headlineSmall),
             const SizedBox(height: 16),
             for (final month in monthly.entries) ...[
               Wrap(
@@ -43,7 +54,7 @@ class ExpensesChart extends StatelessWidget {
                 alignment: WrapAlignment.spaceBetween,
                 children: [
                   Text(monthLabel.format(month.key)),
-                  Text(money.format(month.value)),
+                  Text(money(month.value)),
                 ],
               ),
               const SizedBox(height: 6),

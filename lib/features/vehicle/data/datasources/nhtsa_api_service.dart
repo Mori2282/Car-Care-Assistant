@@ -34,11 +34,19 @@ class VinLookup {
   final CatalogApi _catalog;
   final Dio _dio;
 
-  Future<List<VehicleMatch>> find(String vin) async {
+  Future<List<VehicleMatch>> find(
+    String vin, {
+    String market = '',
+    int? modelYear,
+  }) async {
     var catalogFailed = false;
     if (_catalog.isConfigured) {
       try {
-        final rows = await _catalog.query('vin', {'vin': vin});
+        final rows = await _catalog.query('vin', {
+          'vin': vin,
+          if (market.isNotEmpty) 'market': market,
+          if (modelYear != null) 'modelYear': modelYear.toString(),
+        });
         final matches =
             rows
                 .map(
@@ -65,7 +73,10 @@ class VinLookup {
     }
     final response = await _dio.get<Map<String, dynamic>>(
       'https://vpic.nhtsa.dot.gov/api/vehicles/DecodeVinValues/$vin',
-      queryParameters: {'format': 'json'},
+      queryParameters: {
+        'format': 'json',
+        if (modelYear != null) 'modelyear': modelYear,
+      },
     );
     final rows = response.data?['Results'];
     if (rows is! List) throw const FormatException('Invalid VIN response');

@@ -31,6 +31,7 @@ class _AddVehiclePageState extends State<AddVehiclePage> {
   );
   late final _vin = TextEditingController(text: widget.vehicle?.vin);
   late final _variant = TextEditingController(text: widget.vehicle?.variant);
+  late String _market = widget.vehicle?.market ?? '';
   bool _saving = false;
   bool _lookingUp = false;
   String? _message;
@@ -78,7 +79,11 @@ class _AddVehiclePageState extends State<AddVehiclePage> {
       _message = null;
     });
     try {
-      final matches = await context.read<VinLookup>().find(vin);
+      final matches = await context.read<VinLookup>().find(
+        vin,
+        market: _market,
+        modelYear: int.tryParse(_year.text),
+      );
       if (!mounted || normalizeVin(_vin.text) != vin) return;
       if (matches.isEmpty) {
         setState(
@@ -169,7 +174,8 @@ class _AddVehiclePageState extends State<AddVehiclePage> {
         previous.brand == brand &&
         previous.model == model &&
         previous.year == year &&
-        previous.variant == variant;
+        previous.variant == variant &&
+        previous.market == _market;
     try {
       await context.read<VehicleCubit>().saveVehicle(
         Vehicle(
@@ -180,6 +186,7 @@ class _AddVehiclePageState extends State<AddVehiclePage> {
           vin: vin,
           year: year,
           variant: variant,
+          market: _market,
           catalogId:
               _matchesCatalog
                   ? _match!.catalogId
@@ -281,6 +288,32 @@ class _AddVehiclePageState extends State<AddVehiclePage> {
                   label: const Text('Сканировать'),
                 ),
               ],
+            ),
+            const SizedBox(height: 12),
+            DropdownButtonFormField<String>(
+              value:
+                  const ['', 'EU', 'US', 'CN', 'OTHER'].contains(_market)
+                      ? _market
+                      : '',
+              isExpanded: true,
+              decoration: const InputDecoration(
+                labelText: 'Рынок выпуска (если известен)',
+              ),
+              items: const [
+                DropdownMenuItem(value: '', child: Text('Не знаю')),
+                DropdownMenuItem(value: 'EU', child: Text('Европа')),
+                DropdownMenuItem(value: 'US', child: Text('Северная Америка')),
+                DropdownMenuItem(value: 'CN', child: Text('Китай')),
+                DropdownMenuItem(value: 'OTHER', child: Text('Другой')),
+              ],
+              onChanged:
+                  _saving || _lookingUp
+                      ? null
+                      : (value) => setState(() {
+                        _market = value ?? '';
+                        _match = null;
+                        _message = null;
+                      }),
             ),
             if (_lookingUp)
               const Padding(

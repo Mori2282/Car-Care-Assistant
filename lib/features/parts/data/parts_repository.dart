@@ -1,6 +1,6 @@
 import 'dart:convert';
 
-import 'package:shared_preferences/shared_preferences.dart';
+import '../../../core/storage/garage_storage.dart';
 import '../../../core/storage/serial_writes.dart';
 import '../../../core/catalog/catalog_api.dart';
 import '../../vehicle/domain/models/vehicle.dart';
@@ -8,7 +8,11 @@ import '../domain/part.dart';
 
 class PartsRepository {
   final _writes = SerialWrites();
-  PartsRepository(this._catalog);
+  PartsRepository(
+    this._catalog, {
+    GarageStorage storage = const PreferencesGarageStorage(),
+  }) : _storage = storage;
+  final GarageStorage _storage;
   final CatalogApi _catalog;
 
   bool get hasCatalog => _catalog.isConfigured;
@@ -21,6 +25,7 @@ class PartsRepository {
       'model': vehicle.model,
       'year': vehicle.year.toString(),
       'variant': vehicle.variant,
+      if (vehicle.market.isNotEmpty) 'market': vehicle.market,
     });
     final parts = <String, Part>{};
     for (final row in rows) {
@@ -34,6 +39,10 @@ class PartsRepository {
         number: result.number,
         oe: result.oe,
         source: result.source.isEmpty ? 'Каталог' : result.source,
+        fitmentVehicleId:
+            result.fitmentConfirmed && row['vehicleId'] == vehicle.catalogId
+                ? vehicle.catalogId
+                : '',
         fitmentConfirmed:
             vehicle.catalogId.isNotEmpty &&
             row['vehicleId'] == vehicle.catalogId &&
@@ -49,8 +58,7 @@ class PartsRepository {
   }
 
   Future<List<Part>> load(String vehicleId) async {
-    final prefs = await SharedPreferences.getInstance();
-    final raw = prefs.getString(_key(vehicleId));
+    final raw = await _storage.read(_key(vehicleId));
     if (raw == null) return [];
     return (jsonDecode(raw) as List)
         .cast<Map<String, dynamic>>()
@@ -81,9 +89,6 @@ class PartsRepository {
   String _key(String id) => 'saved_parts_v1_$id';
 
   Future<void> _write(String vehicleId, List<Part> parts) async {
-    final prefs = await SharedPreferences.getInstance();
-    if (!await prefs.setString(_key(vehicleId), jsonEncode(parts))) {
-      throw StateError('Parts storage write failed');
-    }
+    await _storage.write(_key(vehicleId), jsonEncode(parts));
   }
 }

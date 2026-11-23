@@ -2,6 +2,7 @@ import 'package:equatable/equatable.dart';
 
 class MaintenanceRecord extends Equatable {
   final String id;
+  final String currency;
   final String vehicleId;
   final String title;
   final int mileage;
@@ -12,6 +13,7 @@ class MaintenanceRecord extends Equatable {
 
   const MaintenanceRecord({
     required this.id,
+    this.currency = 'RUB',
     required this.vehicleId,
     required this.title,
     required this.mileage,
@@ -23,6 +25,7 @@ class MaintenanceRecord extends Equatable {
 
   MaintenanceRecord copyWith({
     String? id,
+    String? currency,
     String? vehicleId,
     String? title,
     int? mileage,
@@ -33,6 +36,7 @@ class MaintenanceRecord extends Equatable {
   }) {
     return MaintenanceRecord(
       id: id ?? this.id,
+      currency: currency ?? this.currency,
       vehicleId: vehicleId ?? this.vehicleId,
       title: title ?? this.title,
       mileage: mileage ?? this.mileage,
@@ -46,6 +50,7 @@ class MaintenanceRecord extends Equatable {
   Map<String, dynamic> toJson() {
     return {
       'id': id,
+      'currency': currency,
       'vehicleId': vehicleId,
       'title': title,
       'mileage': mileage,
@@ -59,6 +64,7 @@ class MaintenanceRecord extends Equatable {
   factory MaintenanceRecord.fromJson(Map<String, dynamic> json) {
     return MaintenanceRecord(
       id: json['id'] as String,
+      currency: json['currency'] as String? ?? 'RUB',
       vehicleId: json['vehicleId'] as String,
       title: json['title'] as String,
       mileage: json['mileage'] as int,
@@ -72,6 +78,7 @@ class MaintenanceRecord extends Equatable {
   @override
   List<Object?> get props => [
     id,
+    currency,
     vehicleId,
     title,
     mileage,

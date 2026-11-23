@@ -22,6 +22,7 @@ android {
     buildToolsVersion = "35.0.0"
 
     compileOptions {
+        isCoreLibraryDesugaringEnabled = true
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
@@ -33,7 +34,7 @@ android {
     defaultConfig {
         applicationId = "com.example.car_care_app"
         minSdk = 23
-        targetSdk = 35
+        targetSdk = 36
         ndk {
             abiFilters += listOf("armeabi-v7a", "arm64-v8a", "x86_64")
         }
@@ -46,6 +47,10 @@ android {
             signingConfig = signingConfigs.getByName(if (hasReleaseSigning) "production" else "debug")
         }
     }
+}
+
+dependencies {
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
 }
 
 flutter {

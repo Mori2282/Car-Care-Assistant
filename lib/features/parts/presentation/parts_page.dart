@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import '../domain/parts_sources.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -20,6 +22,7 @@ class _PartsPageState extends State<PartsPage> {
   late final PartsRepository _repository = context.read<PartsRepository>();
   List<Part> _saved = [];
   List<Part> _results = [];
+  String? _submittedQuery;
   bool _loading = true;
   bool _writing = false;
   bool _searching = false;
@@ -54,50 +57,79 @@ class _PartsPageState extends State<PartsPage> {
   }
 
   Future<void> _search() async {
+    if (_searching) return;
     final query = _query.text.trim();
-    if (normalizePartNumber(query).length < 2 && query.length < 3 ||
-        query.length > 80) {
-      setState(() => _searchMessage = 'Введите артикул или название детали.');
+    if (query.isEmpty) {
+      setState(() => _searchMessage = 'Введите название детали или артикул.');
       return;
     }
     FocusScope.of(context).unfocus();
     setState(() {
-      _searching = true;
+      _submittedQuery = query;
+      _searching = _repository.hasCatalog;
       _results = [];
       _searchMessage = null;
     });
+    if (!_repository.hasCatalog) return;
     try {
-      if (_repository.hasCatalog) {
-        final results = await _repository.search(widget.vehicle, query);
-        if (!mounted) return;
-        setState(() {
-          _results = results;
-          if (results.isEmpty) {
-            _searchMessage =
-                'Ничего не найдено. Уточните артикул или попробуйте поиск в интернете.';
-          }
-        });
-      } else {
-        final vehicle = widget.vehicle;
-        final uri = Uri.https('www.google.com', '/search', {
-          'q':
-              '$query ${vehicle.brand} ${vehicle.model} ${vehicle.year} ${vehicle.variant} аналог запчасти',
-        });
-        if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
-          throw StateError('Browser unavailable');
+      final results = await _repository.search(widget.vehicle, query);
+      if (!mounted) return;
+      setState(() {
+        _results = results;
+        if (results.isEmpty) {
+          _searchMessage =
+              'В каталоге ничего не найдено. Попробуйте поиск по артикулу или откройте один из источников ниже.';
         }
-      }
+      });
     } catch (_) {
       if (mounted) {
         setState(
           () =>
               _searchMessage =
-                  'Не удалось выполнить поиск. Проверьте подключение и попробуйте снова.',
+                  'Каталог сейчас недоступен. Можно посмотреть сохранённые детали или открыть источник в браузере.',
         );
       }
     } finally {
       if (mounted) setState(() => _searching = false);
     }
+  }
+
+  Future<void> _openSource(Uri uri) async {
+    try {
+      if (await launchUrl(uri, mode: LaunchMode.externalApplication)) return;
+    } catch (_) {
+      // A browser may be missing or disabled.
+    }
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Не удалось открыть браузер.')),
+      );
+    }
+  }
+
+  void _copy(String value, String message) async {
+    await Clipboard.setData(ClipboardData(text: value));
+    if (mounted) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(message)));
+    }
+  }
+
+  List<Part> get _localResults {
+    final query = _submittedQuery;
+    if (query == null) return [];
+    final normalized = normalizePartNumber(query);
+    return _saved
+        .where(
+          (part) =>
+              part.name.toLowerCase().contains(query.toLowerCase()) ||
+              part.brand.toLowerCase().contains(query.toLowerCase()) ||
+              (normalized.isNotEmpty &&
+                  (normalizePartNumber(part.number).contains(normalized) ||
+                      normalizePartNumber(part.oe).contains(normalized))),
+        )
+        .toList();
   }
 
   Future<void> _change(Part part, {bool remove = false}) async {
@@ -139,39 +171,62 @@ class _PartsPageState extends State<PartsPage> {
 
   Widget _tile(Part part, {required bool saved}) {
     final alreadySaved = _saved.any((item) => item.key == part.key);
+    final verified = part.fitsCatalogVehicle(widget.vehicle.catalogId);
     return Card(
-      child: ListTile(
-        title: Text(
-          part.name.isEmpty ? '${part.brand} ${part.number}' : part.name,
-        ),
-        subtitle: Text(
-          [
-            if (part.name.isNotEmpty) '${part.brand} ${part.number}',
-            if (part.oe.isNotEmpty) 'OE: ${part.oe}',
-            part.source,
-            !saved && part.fitmentConfirmed
-                ? 'Совместимость подтверждена каталогом'
-                : 'Перед покупкой проверьте совместимость',
-          ].join('\n'),
-        ),
-        trailing: IconButton(
-          onPressed:
-              _writing || _loading || _loadFailed || (!saved && alreadySaved)
-                  ? null
-                  : () => _change(part, remove: saved),
-          tooltip:
-              saved
-                  ? 'Убрать из списка'
-                  : alreadySaved
-                  ? 'Уже сохранено'
-                  : 'Сохранить деталь',
-          icon: Icon(
-            saved
-                ? Icons.bookmark_remove_outlined
-                : alreadySaved
-                ? Icons.bookmark_added
-                : Icons.bookmark_add_outlined,
-          ),
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              part.name.isEmpty ? part.brand : part.name,
+              style: Theme.of(context).textTheme.titleMedium,
+            ),
+            const SizedBox(height: 4),
+            SelectableText('${part.brand} · ${part.number}'),
+            if (part.oe.isNotEmpty) Text('Оригинальный номер: ${part.oe}'),
+            Text(part.source),
+            const SizedBox(height: 4),
+            Text(
+              verified
+                  ? 'Совместимость подтверждена каталогом для этой модификации'
+                  : part.oe.isNotEmpty && !part.source.startsWith('Добавлено')
+                  ? 'Есть связь по артикулу. Проверьте совместимость с вашим авто.'
+                  : 'Совместимость не подтверждена',
+            ),
+            const SizedBox(height: 4),
+            Wrap(
+              spacing: 8,
+              children: [
+                TextButton.icon(
+                  onPressed: () => _copy(part.number, 'Артикул скопирован'),
+                  icon: const Icon(Icons.copy_outlined),
+                  label: const Text('Артикул'),
+                ),
+                TextButton.icon(
+                  onPressed:
+                      _writing ||
+                              _loading ||
+                              _loadFailed ||
+                              (!saved && alreadySaved)
+                          ? null
+                          : () => _change(part, remove: saved),
+                  icon: Icon(
+                    saved
+                        ? Icons.bookmark_remove_outlined
+                        : Icons.bookmark_add_outlined,
+                  ),
+                  label: Text(
+                    saved
+                        ? 'Убрать'
+                        : alreadySaved
+                        ? 'Сохранено'
+                        : 'Сохранить',
+                  ),
+                ),
+              ],
+            ),
+          ],
         ),
       ),
     );
@@ -196,7 +251,8 @@ class _PartsPageState extends State<PartsPage> {
             onSubmitted: (_) => _search(),
             maxLength: 80,
             decoration: const InputDecoration(
-              labelText: 'Номер OE или название детали',
+              labelText: 'Название или артикул',
+              hintText: 'Например, масляный фильтр',
               counterText: '',
             ),
           ),
@@ -204,18 +260,18 @@ class _PartsPageState extends State<PartsPage> {
           FilledButton.icon(
             onPressed: _searching ? null : _search,
             icon: const Icon(Icons.search),
-            label: Text(
-              _repository.hasCatalog
-                  ? 'Найти аналоги'
-                  : 'Искать аналоги в интернете',
-            ),
+            label: const Text('Найти запчасть'),
           ),
-          if (!_repository.hasCatalog)
-            const Padding(
-              padding: EdgeInsets.only(top: 8),
-              child: Text(
-                'Поиск откроется в браузере. Перед покупкой проверьте совместимость.',
-              ),
+          const SizedBox(height: 8),
+          if (widget.vehicle.vin.isNotEmpty)
+            TextButton.icon(
+              onPressed:
+                  () => _copy(
+                    widget.vehicle.vin,
+                    'VIN скопирован. Его можно вставить в каталог.',
+                  ),
+              icon: const Icon(Icons.copy_outlined),
+              label: const Text('Скопировать VIN для каталога'),
             ),
           if (_searching)
             const Padding(
@@ -232,6 +288,27 @@ class _PartsPageState extends State<PartsPage> {
             Text('Результаты поиска', style: theme.textTheme.titleLarge),
             const SizedBox(height: 8),
             for (final part in _results) _tile(part, saved: false),
+          ],
+          if (_localResults.isNotEmpty) ...[
+            const SizedBox(height: 16),
+            Text('В сохранённых деталях', style: theme.textTheme.titleLarge),
+            for (final part in _localResults) _tile(part, saved: true),
+          ],
+          if (_submittedQuery != null) ...[
+            const SizedBox(height: 16),
+            Text('Проверить в каталоге', style: theme.textTheme.titleLarge),
+            const Text(
+              'Откроется браузер. При необходимости вставьте VIN на сайте.',
+            ),
+            for (final source in partsSources(widget.vehicle, _submittedQuery!))
+              Card(
+                child: ListTile(
+                  title: Text(source.name),
+                  subtitle: Text(source.detail),
+                  trailing: const Icon(Icons.open_in_new),
+                  onTap: () => _openSource(source.uri),
+                ),
+              ),
           ],
           const SizedBox(height: 24),
           Text('Сохранённые детали', style: theme.textTheme.titleLarge),

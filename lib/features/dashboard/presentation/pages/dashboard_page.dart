@@ -1,4 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import '../../../../core/notifications/maintenance_reminders.dart';
+import '../../../maintenance/domain/models/maintenance_schedule.dart';
+import 'garage_settings_page.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:intl/intl.dart';
 
@@ -31,6 +35,18 @@ class DashboardPage extends StatelessWidget {
     appBar: AppBar(
       title: const Text('Мой гараж'),
       actions: [
+        IconButton(
+          tooltip: 'Настройки гаража',
+          icon: const Icon(Icons.settings_outlined),
+          onPressed: () async {
+            final restored = await Navigator.of(context).push<bool>(
+              MaterialPageRoute(builder: (_) => const GarageSettingsPage()),
+            );
+            if (restored == true && context.mounted) {
+              await context.read<VehicleCubit>().loadVehicles(fromBackup: true);
+            }
+          },
+        ),
         IconButton(
           onPressed: () => _edit(context),
           tooltip: 'Добавить автомобиль',
@@ -93,6 +109,8 @@ class DashboardPage extends StatelessWidget {
                     (context) => MaintenanceCubit(
                       context.read<MaintenanceRepository>(),
                       current.id,
+                      onChanged:
+                          context.read<MaintenanceReminders>().refreshQuietly,
                     )..load(),
               ),
               BlocProvider(
@@ -189,6 +207,12 @@ class _GarageContent extends StatelessWidget {
     );
   }
 
+  Future<void> _updateMileage(BuildContext context) async {
+    await Navigator.of(
+      context,
+    ).push(MaterialPageRoute(builder: (_) => _MileagePage(vehicle: vehicle)));
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -245,6 +269,11 @@ class _GarageContent extends StatelessWidget {
                       icon: const Icon(Icons.edit_outlined),
                       label: const Text('Редактировать'),
                     ),
+                    OutlinedButton.icon(
+                      onPressed: () => _updateMileage(context),
+                      icon: const Icon(Icons.speed),
+                      label: const Text('Обновить пробег'),
+                    ),
                     if (vehicles.length > 1)
                       OutlinedButton.icon(
                         onPressed: () => _pickVehicle(context),
@@ -258,37 +287,37 @@ class _GarageContent extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 8),
-        Text('Что хотите сделать?', style: theme.textTheme.titleLarge),
-        const SizedBox(height: 12),
-        BlocBuilder<MaintenanceCubit, MaintenanceState>(
-          builder: (context, state) {
-            final due =
-                state is MaintenanceLoaded
-                    ? state.schedules
-                        .where((item) => item.isDue(vehicle.mileage))
-                        .length
-                    : 0;
-            return _action(
-              context,
-              icon: Icons.build_outlined,
-              title: 'Обслуживание',
-              subtitle:
-                  due > 0
-                      ? 'Скоро или уже пора выполнить: $due'
-                      : 'Записи о работах и план ТО',
-              onTap: () => _openMaintenance(context),
-            );
-          },
-        ),
-        _action(
-          context,
-          icon: Icons.inventory_2_outlined,
-          title: 'Запчасти',
-          subtitle: 'Найти аналоги и сохранить артикулы',
-          onTap:
+        FilledButton.icon(
+          onPressed:
               () => Navigator.of(context).push(
                 MaterialPageRoute(builder: (_) => PartsPage(vehicle: vehicle)),
               ),
+          icon: const Icon(Icons.search),
+          label: const Text('Найти запчасть'),
+        ),
+        const SizedBox(height: 12),
+        BlocBuilder<MaintenanceCubit, MaintenanceState>(
+          builder: (context, state) {
+            final next =
+                state is MaintenanceLoaded
+                    ? nearestMaintenance(
+                      state.schedules,
+                      vehicle.mileage,
+                      DateTime.now(),
+                    )
+                    : null;
+            return _action(
+              context,
+              icon: Icons.build_outlined,
+              title:
+                  next == null ? 'Обслуживание' : 'Следующее ТО: ${next.title}',
+              subtitle:
+                  next == null
+                      ? 'Записать работу или добавить напоминание'
+                      : next.dueSummary(vehicle.mileage),
+              onTap: () => _openMaintenance(context),
+            );
+          },
         ),
         BlocBuilder<ExpensesCubit, ExpensesState>(
           builder:
@@ -325,6 +354,94 @@ class _GarageContent extends StatelessWidget {
       subtitle: Text(subtitle),
       trailing: const Icon(Icons.chevron_right),
       onTap: onTap,
+    ),
+  );
+}
+
+class _MileagePage extends StatefulWidget {
+  const _MileagePage({required this.vehicle});
+  final Vehicle vehicle;
+
+  @override
+  State<_MileagePage> createState() => _MileagePageState();
+}
+
+class _MileagePageState extends State<_MileagePage> {
+  final _form = GlobalKey<FormState>();
+  late final _value = TextEditingController(
+    text: widget.vehicle.mileage.toString(),
+  );
+  bool _saving = false;
+
+  @override
+  void dispose() {
+    _value.dispose();
+    super.dispose();
+  }
+
+  Future<void> _save() async {
+    if (_saving || !_form.currentState!.validate()) return;
+    final mileage = int.parse(_value.text);
+    final repository = context.read<MaintenanceRepository>();
+    final cubit = context.read<VehicleCubit>();
+    setState(() => _saving = true);
+    try {
+      final data = await repository.getMaintenance(widget.vehicle.id);
+      await cubit.saveVehicle(widget.vehicle.copyWith(mileage: mileage));
+      if (!mounted) return;
+      final crossing = data.schedules.any(
+        (item) =>
+            item.intervalMileage > 0 &&
+            item.getRemainingMileage(widget.vehicle.mileage) > 1000 &&
+            item.getRemainingMileage(mileage) <= 1000,
+      );
+      Navigator.pop(context);
+      if (crossing) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('По пробегу скоро ТО. Проверьте план в гараже.'),
+          ),
+        );
+      }
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _saving = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Пробег не сохранился. Попробуйте ещё раз.'),
+        ),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    appBar: AppBar(title: const Text('Обновить пробег')),
+    body: Form(
+      key: _form,
+      child: ContentList(
+        children: [
+          TextFormField(
+            controller: _value,
+            keyboardType: TextInputType.number,
+            inputFormatters: [
+              FilteringTextInputFormatter.digitsOnly,
+              LengthLimitingTextInputFormatter(9),
+            ],
+            decoration: const InputDecoration(
+              labelText: 'Показание одометра, км',
+            ),
+            validator:
+                (value) =>
+                    int.tryParse(value ?? '') == null ? 'Введите пробег' : null,
+          ),
+          const SizedBox(height: 12),
+          FilledButton(
+            onPressed: _saving ? null : _save,
+            child: const Text('Сохранить пробег'),
+          ),
+        ],
+      ),
     ),
   );
 }

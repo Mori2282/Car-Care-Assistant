@@ -6,6 +6,7 @@ class Part {
     required this.oe,
     required this.source,
     required this.fitmentConfirmed,
+    this.fitmentVehicleId = '',
   });
 
   final String name;
@@ -14,6 +15,10 @@ class Part {
   final String oe;
   final String source;
   final bool fitmentConfirmed;
+  final String fitmentVehicleId;
+
+  bool fitsCatalogVehicle(String id) =>
+      id.isNotEmpty && fitmentConfirmed && fitmentVehicleId == id;
 
   String get key =>
       '${brand.trim().toUpperCase()}|${normalizePartNumber(number)}|${normalizePartNumber(oe)}';
@@ -25,6 +30,7 @@ class Part {
     'oe': oe,
     'source': source,
     'fitmentConfirmed': fitmentConfirmed,
+    'fitmentVehicleId': fitmentVehicleId,
   };
 
   factory Part.fromJson(Map<String, dynamic> json) {
@@ -36,6 +42,7 @@ class Part {
       oe: read('oe'),
       source: read('source'),
       fitmentConfirmed: json['fitmentConfirmed'] == true,
+      fitmentVehicleId: read('fitmentVehicleId'),
     );
   }
 }

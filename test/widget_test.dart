@@ -41,7 +41,7 @@ void main() {
         findsOneWidget,
       );
 
-      final parts = find.text('Запчасти');
+      final parts = find.text('Найти запчасть');
       await tester.scrollUntilVisible(
         parts,
         220,

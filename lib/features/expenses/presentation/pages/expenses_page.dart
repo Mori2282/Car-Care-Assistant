@@ -3,6 +3,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:intl/intl.dart';
 
 import '../../../../core/widgets/content_list.dart';
+import '../../../../core/widgets/currency_field.dart';
 import '../../../vehicle/domain/models/vehicle.dart';
 import '../../domain/models/expense_point.dart';
 import '../cubit/expenses_cubit.dart';
@@ -41,7 +42,7 @@ class ExpensesPage extends StatelessWidget {
           );
         }
         final theme = Theme.of(context);
-        final money = NumberFormat.currency(locale: 'ru', symbol: '₽');
+        final currencies = state.expenses.map((item) => item.currency).toSet();
         return ContentList(
           children: [
             Text(
@@ -74,7 +75,8 @@ class ExpensesPage extends StatelessWidget {
                     'Добавьте покупку или укажите стоимость при записи работы в журнале обслуживания.',
               )
             else ...[
-              ExpensesChart(expenses: state.expenses),
+              for (final currency in currencies)
+                ExpensesChart(currency: currency, expenses: state.expenses),
               const SizedBox(height: 16),
               Text('История расходов', style: theme.textTheme.titleLarge),
               const SizedBox(height: 8),
@@ -83,7 +85,7 @@ class ExpensesPage extends StatelessWidget {
                   child: ListTile(
                     title: Text(expense.category),
                     subtitle: Text(
-                      '${money.format(expense.amount)} · ${DateFormat('dd.MM.yyyy').format(expense.date)}',
+                      '${garageMoney(expense.amount, expense.currency)} · ${DateFormat('dd.MM.yyyy').format(expense.date)}',
                     ),
                   ),
                 ),
@@ -107,6 +109,7 @@ class _ExpenseEditorState extends State<_ExpenseEditor> {
   final _form = GlobalKey<FormState>();
   String _description = '';
   double _amount = 0;
+  String _currency = 'RUB';
   DateTime _date = DateTime.now();
   bool _saving = false, _error = false;
 
@@ -126,6 +129,7 @@ class _ExpenseEditorState extends State<_ExpenseEditor> {
           id: '',
           date: _date,
           amount: _amount,
+          currency: _currency,
           category: _description,
           vehicleId: widget.vehicle.id,
         ),
@@ -161,7 +165,7 @@ class _ExpenseEditorState extends State<_ExpenseEditor> {
           ),
           const SizedBox(height: 12),
           TextFormField(
-            decoration: const InputDecoration(labelText: 'Сумма, ₽'),
+            decoration: const InputDecoration(labelText: 'Сумма'),
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
             validator: (value) {
               final amount = _parse(value);
@@ -170,6 +174,11 @@ class _ExpenseEditorState extends State<_ExpenseEditor> {
                   : null;
             },
             onSaved: (value) => _amount = _parse(value)!,
+          ),
+          const SizedBox(height: 12),
+          CurrencyField(
+            value: _currency,
+            onChanged: (value) => setState(() => _currency = value),
           ),
           const SizedBox(height: 12),
           OutlinedButton.icon(

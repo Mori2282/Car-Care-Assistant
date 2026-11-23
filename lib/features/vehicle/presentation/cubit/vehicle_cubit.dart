@@ -9,13 +9,13 @@ class VehicleCubit extends Cubit<VehicleState> {
 
   final VehicleRepository _repository;
 
-  Future<void> loadVehicles() async {
+  Future<void> loadVehicles({bool fromBackup = false}) async {
     final previous = state;
-    if (previous is! VehicleLoaded) emit(VehicleLoading());
+    if (fromBackup || previous is! VehicleLoaded) emit(VehicleLoading());
     try {
       final vehicles = await _repository.getVehicles();
       final selectedId =
-          previous is VehicleLoaded
+          !fromBackup && previous is VehicleLoaded
               ? previous.selectedVehicle?.id
               : await _repository.selectedId();
       final selected =
